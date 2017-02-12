@@ -23,6 +23,7 @@
 #include <boost/any.hpp>
 #include <map>
 #include <string>
+#include <vector>
 
 // Tiny Template Language
 //

@@ -17,6 +17,10 @@
  * under the License.
  */
 
+#ifdef _WIN32
+#pragma warning(disable: 4018 4100 4127 4389 4459 4800 4996)
+#endif
+
 #include <boost/algorithm/string/join.hpp>
 #include <boost/fusion/include/at_c.hpp>
 #include <boost/optional/optional_io.hpp>
@@ -31,6 +35,38 @@
 #include <vector>
 
 #include "tiny_template.h"
+
+// hack for windows
+#ifdef _WIN32
+#undef BOOST_SPIRIT_DEFINE_
+#undef BOOST_SPIRIT_DEFINE
+
+#define BOOST_SPIRIT_DEFINE_(r, data, rule_name)                                \
+    using BOOST_PP_CAT(rule_name, _synonym) = decltype(rule_name);              \
+    template <typename Iterator, typename Context, typename Attribute>          \
+    inline bool parse_rule(                                                     \
+        BOOST_PP_CAT(rule_name, _synonym) rule_                                 \
+      , Iterator& first, Iterator const& last                                   \
+      , Context const& context, Attribute& attr)                                \
+    {                                                                           \
+        using boost::spirit::x3::unused;                                        \
+        static auto const def_ = (rule_name = BOOST_PP_CAT(rule_name, _def));   \
+        return def_.parse(first, last, context, unused, attr);                  \
+    }                                                                           \
+    /***/
+
+#define BOOST_SPIRIT_DEFINE(...) BOOST_PP_SEQ_FOR_EACH(                         \
+    BOOST_SPIRIT_DEFINE_, _, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__))             \
+    /***/
+#endif
+
+// temporary debugging
+#ifdef _DEBUG
+#include <iostream>
+#define LOG(op) std::cerr << op << std::endl << std::flush;
+#else
+#define LOG(op)
+#endif
 
 namespace ttl
 {
@@ -47,24 +83,19 @@ namespace ttl
 		bool first = true;
 		for (auto &item : v)
 		{
-			if (first)
-				first = false;
+			if (first) first = false;
 			else out << ',';
 			const std::string *str = boost::any_cast<std::string>(&item);
-			if (str)
-				out << '"' << *str << '"';
+			if (str) out << '"' << *str << '"';
 			else
 			{
 				const vector *vect = boost::any_cast<vector>(&item);
-				if (vect)
-					to_json_array(*vect, out);
+				if (vect) to_json_array(*vect, out);
 				else
 				{
 					const map *m = boost::any_cast<map>(&item);
-					if (m)
-						to_json_map(*m, out);
-					else
-						throw evaluation_error("invalid type");
+					if (m) to_json_map(*m, out);
+					else throw evaluation_error("invalid type");
 				}
 			}
 		}
@@ -77,26 +108,20 @@ namespace ttl
 		bool first = true;
 		for (auto &pair : m)
 		{
-			if (first)
-				first = false;
-			else
-				out << ',';
+			if (first) first = false;
+			else out << ',';
 			out << '"' << pair.first << "\":";
 			const std::string *str = boost::any_cast<std::string>(&pair.second);
-			if (str)
-				out << '"' << *str << '"';
+			if (str) out << '"' << *str << '"';
 			else
 			{
 				const vector *vect = boost::any_cast<vector>(&pair.second);
-				if (vect)
-					to_json_array(*vect, out);
+				if (vect) to_json_array(*vect, out);
 				else
 				{
 					const map * submap = boost::any_cast<map>(&pair.second);
-					if (submap)
-						to_json_map(*submap, out);
-					else
-						throw evaluation_error("invalid type");
+					if (submap) to_json_map(*submap, out);
+					else throw evaluation_error("invalid type");
 				}
 			}
 		}
@@ -114,7 +139,9 @@ namespace ttl
 
 	namespace ast
 	{
-		
+		// global empty string value as boost::any
+		boost::any empty_string = std::string();
+
 		struct parent_node : node
 		{
 			template <typename T> parent_node(std::vector<T> &v)
@@ -128,15 +155,13 @@ namespace ttl
 			virtual std::string evaluate(const map &params)
 			{
 				std::string ret;
-				for (node_ptr &node : children)
-					ret += node->evaluate(params);
+				for (node_ptr &node : children) ret += node->evaluate(params);
 				return ret;
 			}
 			virtual std::string debug()
 			{
 				std::string ret;
-				for (node_ptr &node : children)
-					ret += node->debug();
+				for (node_ptr &node : children) ret += node->debug();
 				return ret;
 			}
 			std::vector<node_ptr> children;
@@ -159,8 +184,7 @@ namespace ttl
 			virtual std::string evaluate(const map &params)
 			{
 				const std::string * str = boost::any_cast<std::string>(&resolve(params));
-				if (!str)
-					throw evaluation_error("wrong type");
+				if (!str) throw evaluation_error("wrong type");
 				return *str;
 			}
 
@@ -171,10 +195,12 @@ namespace ttl
 				for (int i = 0; i < identifiers.size(); ++i)
 				{
 					it = p->find(identifiers[i]);
-					if (it == params.end())
+					if (it == p->end())
+					{
+						if (i == identifiers.size() - 1) return empty_string; // empty string for empty references
 						throw evaluation_error("parameter '" + identifiers[i] + "' not found");
-					if (i == identifiers.size() - 1)
-						break;
+					}
+					if (i == identifiers.size() - 1) break;
 					p = &boost::any_cast<const map &>(it->second);
 				}
 				return it->second;
@@ -186,26 +212,13 @@ namespace ttl
 			{
 				boost::any prop;
 				try { prop = resolve(params); } catch (std::exception &) { return false; }
-				try
-				{
-					std::string *value = boost::any_cast<std::string>(&prop);
-					return value ? value->size() : false;  /* empty strings are false */
-				}
-				catch(boost::bad_any_cast&)
-				{
-					// it's not a string - check it's a pamameters map */
-					try
-					{
-						const map &p = boost::any_cast<const map &>(prop);
-						return p.size(); /* empty maps are false */
-					}
-					catch(boost::bad_any_cast&)
-					{
-						// then it's a vector (otherwise throw!)
-						const vector &v = boost::any_cast<const vector&>(prop);
-						return v.size(); /* empty vectors are false */
-					}
-				}
+				const std::string *value = boost::any_cast<std::string>(&prop);
+				if (value) return !value->empty();  /* empty strings are false */
+				const map *m = boost::any_cast<const map>(&prop);
+				if (m) return !m->empty();
+				const vector *v = boost::any_cast<const vector>(&prop);
+				if (v) return !v->empty();
+				throw evaluation_error("invalid type");
 			}
 			std::vector<std::string> identifiers;
 		};
@@ -223,15 +236,13 @@ namespace ttl
 			virtual ~if_directive() {}
 			virtual std::string evaluate(const map &params)
 			{
+				std::string ret;
 				reference *ref = condition->get<reference>();
-				if (!ref)
-					throw evaluation_error("malformed #if directive");
-				if (ref->test(params))
-					return if_true->evaluate(params);
-				else if(if_false)
-					return if_false->evaluate(params);
-				else
-					return "";
+				if (!ref) throw evaluation_error("malformed #if directive");
+				if (ref->test(params)) ret = if_true->evaluate(params);
+				else if(if_false) ret = if_false->evaluate(params);
+				else ret = "";
+				return ret;
 			}
 			virtual std::string debug()
 			{
@@ -251,8 +262,7 @@ namespace ttl
 				if (!iterator->get<reference>() || iterator->get<reference>()->identifiers.size() != 1)
 					throw parsing_error("malformed #join directive");
 				collection = at_c<1>(t);
-				if (at_c<2>(t))
-					separator = *at_c<2>(t);
+				if (at_c<2>(t)) separator = *at_c<2>(t);
 				content = at_c<3>(t);
 			}
 			virtual ~join_directive() {}
@@ -265,18 +275,15 @@ namespace ttl
 				{
 					const std::string *str = boost::any_cast<std::string>(&values);
 					if (str) return *str; // a single value
-					else
-						return std::string();
+					else return std::string();
 				}
 				map loop_params(params);
 				std::string itname = iterator->get<reference>()->identifiers[0];
 				bool first = true;
 				for (boost::any const &value : *objects)
 				{
-					if (first)
-						first = false;
-					else
-						ret += separator->evaluate(params);
+					if (first) first = false;
+					else if (separator) ret += separator->evaluate(params);						
 					loop_params[itname] = value;
 					ret += content->evaluate(loop_params);
 				}
