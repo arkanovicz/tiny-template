@@ -51,62 +51,62 @@
 
 namespace ttl
 {
-	// context
-	
-  // boost::any values can be: string, std::vector<boost::any> and map<string, boost::any>
-  typedef std::map<std::string, boost::any> map;
-	typedef std::vector<boost::any> vector;
-	using context = map;
+    // context
+    
+    // boost::any values can be: string, std::vector<boost::any> and map<string, boost::any>
+    typedef std::map<std::string, boost::any> map;
+    typedef std::vector<boost::any> vector;
+    using context = map;
 
-	// utility
+    // utility
 
-	std::string to_json(const context &ctx);
-	
-	// grammar
-	
-  namespace ast
-	{
-		struct node;
-		typedef std::shared_ptr<node> node_ptr;
-		
-		struct node
-		{
-			virtual ~node() {}
-			static node_ptr parse(const std::string &);
-			virtual std::string evaluate(const map &) = 0;
-			virtual std::string debug() = 0;
-			template <typename T> T* get() { return dynamic_cast<T*>(this); }
-		};
-		
-	} // namespace ast
+    std::string to_json(const context &ctx);
+    
+    // grammar
+    
+    namespace ast
+    {
+        struct node;
+        typedef std::shared_ptr<node> node_ptr;
+        
+        struct node
+        {
+            virtual ~node() {}
+            static node_ptr parse(const std::string &);
+            virtual std::string evaluate(const map &) = 0;
+            virtual std::string debug() = 0;
+            template <typename T> T* get() { return dynamic_cast<T*>(this); }
+        };
+        
+    } // namespace ast
 
-	// template
-	
-	using tiny_template = ast::node;
-	using tiny_template_ptr = ast::node_ptr;
+    // template
+    
+    using tiny_template = ast::node;
+    using tiny_template_ptr = ast::node_ptr;
 
-	// errors
-	
-	class parsing_error : public std::exception
-	{
-	public:
-		parsing_error() : message("parsing error") {}
-		parsing_error(const std::string &msg) : message(msg) {}
-		virtual const char* what() const noexcept { return message.data(); }
-	private:
-		std::string message;
-	};
+    // errors
+    
+    class parsing_error : public std::exception
+    {
+    public:
+        parsing_error() : message("parsing error") {}
+        parsing_error(const std::string &msg) : message(msg) {}
+        virtual const char* what() const noexcept { return message.data(); }
+    private:
+        std::string message;
+    };
 
-	class evaluation_error : public std::exception
-	{
-	public:
-		evaluation_error() : message("evaluation error") {}
-		evaluation_error(const std::string &msg) : message(msg) {}
-		virtual const char* what() const noexcept { return message.data(); }
-	private:
-		std::string message;
-	};
-	
+    class evaluation_error : public std::exception
+    {
+    public:
+        evaluation_error() : message("evaluation error") {}
+        evaluation_error(const std::string &msg) : message(msg) {}
+        virtual const char* what() const noexcept { return message.data(); }
+    private:
+        std::string message;
+    };
+    
 } // namespace ttl
 
 #endif // __TINY_TEMPLATE__
