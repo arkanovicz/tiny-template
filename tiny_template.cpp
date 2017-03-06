@@ -25,7 +25,7 @@
 #include <boost/fusion/include/at_c.hpp>
 #include <boost/optional/optional_io.hpp>
 // uncomment to display parsing debugging infos
-//#define BOOST_SPIRIT_X3_DEBUG
+#define BOOST_SPIRIT_X3_DEBUG
 #include <boost/spirit/home/x3.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <exception>
@@ -174,6 +174,7 @@ namespace ttl
 				for (node_ptr &node : children) ret += node->debug();
 				return ret;
 			}
+            virtual bool test(const map &) { throw evaluation_error("parent_node cannot be tested"); }
 			std::vector<node_ptr> children;
 		};
 
@@ -183,6 +184,7 @@ namespace ttl
 			virtual ~text() {}
 			virtual std::string evaluate(const map &params) { return value; }
 			virtual std::string debug() { return value; }
+            virtual bool test(const map &) { return !value.empty(); }
 			std::string value;
 		};
 		
@@ -223,9 +225,10 @@ namespace ttl
 				return it->second;
 			}
 			
-			virtual std::string debug() { return "{$" + boost::join(identifiers, ".") + "}"; }
+			virtual std::string debug() { return "{" + debug_inner() + "}"; }
+			std::string debug_inner() { return "$" + boost::join(identifiers, "."); }
 
-			bool test(const map &params)
+			virtual bool test(const map &params)
 			{
 				boost::any prop;
 				try { prop = resolve(params); } catch (std::exception &) { return false; }
@@ -242,12 +245,59 @@ namespace ttl
 			std::vector<std::string> identifiers;
 		};
 
+        struct condition : node
+        {
+			condition() {}
+            virtual ~condition() {}
+            virtual std::string evaluate(const map &) { throw evaluation_error("condition cannot be evaluated"); }
+            virtual std::string operator_string() = 0;
+        };
+    
+        struct binary_operator : condition
+        {
+			template <typename tuple> binary_operator(tuple &t)
+			{
+				using boost::fusion::at_c;
+                left = at_c<0>(t);
+                right = at_c<2>(t);
+            }
+            virtual ~binary_operator() {}
+            virtual std::string debug()
+            {
+                return ( left->get<reference>() ? left->get<reference>()->debug_inner() : left->debug() ) + " " +
+                        operator_string() + " " +
+                        ( right->get<reference>() ? right->get<reference>()->debug_inner() : right->debug() );
+            }
+			virtual bool test(const map &params)
+            {
+                std::string left_value = left->evaluate(params);
+                std::string right_value = right->evaluate(params);
+                return apply_operator(left_value, right_value);
+            }
+            virtual bool apply_operator(const std::string &left_value, const std::string &right_value) = 0;
+            node_ptr left;
+            node_ptr right;
+        };
+
+        struct equals_operator : binary_operator
+        {
+            template <typename tuple> equals_operator(tuple &t) : binary_operator(t)
+            {
+            }
+
+            virtual std::string operator_string() { return "=="; }
+            virtual bool apply_operator(const std::string &left_value, const std::string &right_value)
+            {
+                return left_value == right_value;
+            }
+        };
+    
 		struct if_directive : node
 		{
 			template <typename tuple> if_directive(tuple & t)
 			{
 				using boost::fusion::at_c;
-				condition = at_c<0>(t);
+				condition_node = at_c<0>(t);
 				if_true = at_c<1>(t);
 				if (at_c<2>(t))
 					if_false = *at_c<2>(t);
@@ -256,18 +306,22 @@ namespace ttl
 			virtual std::string evaluate(const map &params)
 			{
 				std::string ret;
-				reference *ref = condition->get<reference>();
-				if (!ref) throw evaluation_error("malformed #if directive");
-				if (ref->test(params)) ret = if_true->evaluate(params);
+				if (!condition_node) throw evaluation_error("malformed #if directive");
+				if (condition_node->test(params)) ret = if_true->evaluate(params);
 				else if(if_false) ret = if_false->evaluate(params);
 				else ret = "";
 				return ret;
 			}
 			virtual std::string debug()
 			{
-				return "{#if $" + boost::join(condition->get<reference>()->identifiers, ".") + "}" + if_true->debug() + ( if_false ? "{#else}" + if_false->debug() : std::string() ) + "{#end}";
+                std::string cond_string;
+                reference* ref = condition_node->get<reference>();
+                if (ref) cond_string = ref->debug_inner();
+                else cond_string = condition_node->debug();
+				return "{#if " + cond_string + "}" + if_true->debug() + ( if_false ? "{#else}" + if_false->debug() : std::string() ) + "{#end}";
 			}
-			node_ptr condition;
+            virtual bool test(const map &) { throw evaluation_error("#if directive cannot be tested"); }
+			node_ptr condition_node;
 			node_ptr if_true;
 			node_ptr if_false;
 		};
@@ -310,7 +364,9 @@ namespace ttl
 				}
 				return ret;
 			}
-			
+
+            virtual bool test(const map &) { throw evaluation_error("#join directive cannot be tested"); }
+            
 			virtual std::string debug() { return "{#join $" + iterator->get<reference>()->identifiers[0] + " in $" + boost::join(collection->get<reference>()->identifiers, ".") + ( separator ? " with '" + separator->debug() + "'" : std::string() ) + "}" + content->debug() + "{#end}";
 			}
 			
@@ -347,6 +403,8 @@ namespace ttl
 		auto new_if_directive = [](auto &ctx) { _val(ctx) = ast::node_ptr(new ast::if_directive(_attr(ctx))); };
 		auto new_join_directive = [](auto &ctx) { _val(ctx) = ast::node_ptr(new ast::join_directive(_attr(ctx))); };
 
+        auto new_binary_operator = [](auto &ctx) { _val(ctx) = ast::node_ptr(new ast::equals_operator(_attr(ctx))); }; 
+    
 		// rules
 		DECLARE_RULE( tiny_template, ast::node_ptr )
 		DECLARE_RULE( template_part, ast::node_ptr )
@@ -360,13 +418,14 @@ namespace ttl
 		DECLARE_RULE( identifier, std::string )
 		DECLARE_RULE( literal_string, ast::node_ptr )
 		DECLARE_RULE( plain_text, ast::node_ptr )
+        DECLARE_RULE( binary_operator, ast::node_ptr )
 
 		DEFINE_RULE( tiny_template, template_part >> eoi )
 		DEFINE_RULE( template_part, ( *( variable | directive | plain_text) ) [ new_parent ] )
 		DEFINE_RULE( directive, if_directive | join_directive )
 		DEFINE_RULE( if_directive, ( "{#if" >> omit[+space] >> condition >> '}' >> template_part >> -( "{#else}" >> template_part ) >> "{#end}" ) [ new_if_directive ] )
 		// CB TODO - the only supported condition, for now, is a boolean check on a reference
-		DEFINE_RULE( condition, reference )
+		DEFINE_RULE( condition, ( ( value >> omit[*space] >> binary_operator >> omit[*space] >> value ) [ new_binary_operator ] ) | reference )
 		DEFINE_RULE( join_directive, ( "{#join" >> omit[+space] >> reference >> omit[+space] >> "in" >> omit[+space] >> reference >> -( omit[+space >> "with" >> +space] >> value ) >> '}' >> template_part >> "{#end}" ) [ new_join_directive] )
 		DEFINE_RULE( value, reference | literal_string )
 		DEFINE_RULE( variable, '{' >> reference >> '}' )
@@ -374,6 +433,7 @@ namespace ttl
 		DEFINE_RULE( identifier, +( alnum | char_('_') ) )
 		DEFINE_RULE( literal_string, '\'' >> raw[ +(char_ - '\'') ] [ new_text ] >> '\'' ) // CB TODO - escaping apos
 		DEFINE_RULE( plain_text, raw[ +( char_ - '{' ) ] [ new_text ] )
+        DEFINE_RULE( binary_operator, raw["=="] [ new_text ] )
 		
 	} // namespace parser
 	

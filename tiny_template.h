@@ -75,6 +75,7 @@ namespace ttl
             virtual ~node() {}
             static node_ptr parse(const std::string &);
             virtual std::string evaluate(const map &) = 0;
+			virtual bool test(const map &) = 0;
             virtual std::string debug() = 0;
             template <typename T> T* get() { return dynamic_cast<T*>(this); }
         };
