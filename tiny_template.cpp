@@ -89,14 +89,19 @@ namespace ttl
 			if (str) out << '"' << *str << '"';
 			else
 			{
-				const vector *vect = boost::any_cast<vector>(&item);
-				if (vect) to_json_array(*vect, out);
-				else
-				{
-					const map *m = boost::any_cast<map>(&item);
-					if (m) to_json_map(*m, out);
-					else throw evaluation_error("invalid type");
-				}
+                const char * const* chars = boost::any_cast<const char*>(&item);
+                if (chars) out << '"' << *str << '"';
+                else
+                {
+                    const vector *vect = boost::any_cast<vector>(&item);
+                    if (vect) to_json_array(*vect, out);
+                    else
+                    {
+                        const map *m = boost::any_cast<map>(&item);
+                        if (m) to_json_map(*m, out);
+                        else throw evaluation_error("invalid type");
+                    }
+                }
 			}
 		}
 		out << ']';
@@ -115,14 +120,19 @@ namespace ttl
 			if (str) out << '"' << *str << '"';
 			else
 			{
-				const vector *vect = boost::any_cast<vector>(&pair.second);
-				if (vect) to_json_array(*vect, out);
-				else
-				{
-					const map * submap = boost::any_cast<map>(&pair.second);
-					if (submap) to_json_map(*submap, out);
-					else throw evaluation_error("invalid type");
-				}
+                const char * const* chars = boost::any_cast<const char*>(&pair.second);
+                if (chars) out << '"' << *str << '"';
+                else
+                {
+                    const vector *vect = boost::any_cast<vector>(&pair.second);
+                    if (vect) to_json_array(*vect, out);
+                    else
+                    {
+                        const map * submap = boost::any_cast<map>(&pair.second);
+                        if (submap) to_json_map(*submap, out);
+                        else throw evaluation_error("invalid type");
+                    }
+                }
 			}
 		}
 		out << '}';
@@ -183,9 +193,16 @@ namespace ttl
 
 			virtual std::string evaluate(const map &params)
 			{
+                std::string ret;
 				const std::string * str = boost::any_cast<std::string>(&resolve(params));
-				if (!str) throw evaluation_error("wrong type");
-				return *str;
+                if (str) { ret = *str; }
+                else
+                {
+                    const char * const* chars = boost::any_cast<const char*>(&resolve(params));
+                    if (chars) { ret = *chars; }
+                    else throw evaluation_error("wrong type");
+                }
+                return ret;
 			}
 
 			const boost::any & resolve(const map &params)
@@ -214,6 +231,8 @@ namespace ttl
 				try { prop = resolve(params); } catch (std::exception &) { return false; }
 				const std::string *value = boost::any_cast<std::string>(&prop);
 				if (value) return !value->empty();  /* empty strings are false */
+                const char** chars = boost::any_cast<const char*>(&prop);
+                if (chars) return *chars && **chars; /* empty and null char* strings are false */
 				const map *m = boost::any_cast<const map>(&prop);
 				if (m) return !m->empty();
 				const vector *v = boost::any_cast<const vector>(&prop);
@@ -275,6 +294,8 @@ namespace ttl
 				{
 					const std::string *str = boost::any_cast<std::string>(&values);
 					if (str) return *str; // a single value
+                    const char * const* chars = boost::any_cast<const char*>(&values);
+                    if (chars) return *chars ? std::string() : std::string(*chars); // idem
 					else return std::string();
 				}
 				map loop_params(params);
