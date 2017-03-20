@@ -255,11 +255,10 @@ namespace ttl
     
         struct binary_operator : condition
         {
-			template <typename tuple> binary_operator(tuple &t)
+			binary_operator(node_ptr left_, node_ptr right_)
 			{
-				using boost::fusion::at_c;
-                left = at_c<0>(t);
-                right = at_c<2>(t);
+                left = left_;
+                right = right_;
             }
             virtual ~binary_operator() {}
             virtual std::string debug()
@@ -281,7 +280,7 @@ namespace ttl
 
         struct equals_operator : binary_operator
         {
-            template <typename tuple> equals_operator(tuple &t) : binary_operator(t)
+            equals_operator(node_ptr left, node_ptr right) : binary_operator(left, right)
             {
             }
 
@@ -402,8 +401,13 @@ namespace ttl
 		auto new_parent = [](auto& ctx) { _val(ctx) = ast::node_ptr(new ast::parent_node(_attr(ctx))); };
 		auto new_if_directive = [](auto &ctx) { _val(ctx) = ast::node_ptr(new ast::if_directive(_attr(ctx))); };
 		auto new_join_directive = [](auto &ctx) { _val(ctx) = ast::node_ptr(new ast::join_directive(_attr(ctx))); };
-
-        auto new_binary_operator = [](auto &ctx) { _val(ctx) = ast::node_ptr(new ast::equals_operator(_attr(ctx))); }; 
+        auto new_condition = [](auto &ctx)
+        {
+            using boost::fusion::at_c;
+            auto attr = _attr(ctx);
+            if (at_c<1>(attr)) _val(ctx) = ast::node_ptr(new ast::equals_operator(at_c<0>(attr), *at_c<1>(attr)));
+            else _val(ctx) = at_c<0>(attr);
+        };
     
 		// rules
 		DECLARE_RULE( tiny_template, ast::node_ptr )
@@ -425,7 +429,8 @@ namespace ttl
 		DEFINE_RULE( directive, if_directive | join_directive )
 		DEFINE_RULE( if_directive, ( "{#if" >> omit[+space] >> condition >> '}' >> template_part >> -( "{#else}" >> template_part ) >> "{#end}" ) [ new_if_directive ] )
 		// CB TODO - the only supported condition, for now, is a boolean check on a reference
-		DEFINE_RULE( condition, ( ( value >> omit[*space] >> binary_operator >> omit[*space] >> value ) [ new_binary_operator ] ) | reference )
+		DEFINE_RULE( condition, ( omit[*space] >> value >> omit[*space] >> -( omit[raw["=="]] >> omit[*space] >> value ) ) [new_condition] )
+//		DEFINE_RULE( condition, ( value >> omit[*space] >> -( binary_operator >> omit[*space] >> value ) ) [new_condition] )
 		DEFINE_RULE( join_directive, ( "{#join" >> omit[+space] >> reference >> omit[+space] >> "in" >> omit[+space] >> reference >> -( omit[+space >> "with" >> +space] >> value ) >> '}' >> template_part >> "{#end}" ) [ new_join_directive] )
 		DEFINE_RULE( value, reference | literal_string )
 		DEFINE_RULE( variable, '{' >> reference >> '}' )
@@ -433,7 +438,7 @@ namespace ttl
 		DEFINE_RULE( identifier, +( alnum | char_('_') ) )
 		DEFINE_RULE( literal_string, '\'' >> raw[ +(char_ - '\'') ] [ new_text ] >> '\'' ) // CB TODO - escaping apos
 		DEFINE_RULE( plain_text, raw[ +( char_ - '{' ) ] [ new_text ] )
-        DEFINE_RULE( binary_operator, raw["=="] [ new_text ] )
+        // DEFINE_RULE( binary_operator, ( raw["=="] | ... ) [ new_text ] ) TODO
 		
 	} // namespace parser
 	
