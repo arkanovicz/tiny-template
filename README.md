@@ -33,11 +33,11 @@ This code will produce the output:
 
 ( brackets denote optional portions )
 
-    {$reference[.property[.property...]]}
-    {#if <condition> } ... [ {#elseif <condition>} ... ] [ {#else} ... ] {#end}
+    Reference: {$reference[.property[.property...]]}
+    Test: {#if <condition> } ... [ {#elseif <condition>} ... ] [ {#else} ... ] {#end}
     where <condition> is: $reference[.propery...] [ == <value> ]
-    {#join $object in $collection [ with 'value' ]} ...${object}...  {#end}
-
+    Loop: {#join $object in $collection [ with <value> ]} ...${object}...  {#end}
+    <value> is a $reference or a 'string literal'
 
 ## Requirements
 
