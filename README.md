@@ -34,9 +34,11 @@ This code will produce the output:
 ( brackets denote optional portions )
 
     {$reference[.property[.property...]]}
-    {#if $reference[.propery...]} ... [ {#else} ... ] {#end}
+    {#if <condition> } ... [ {#elseif <condition>} ... ] [ {#else} ... ] {#end}
+    where <condition> is: $reference[.propery...] [ == <value> ]
     {#join $object in $collection [ with 'value' ]} ...${object}...  {#end}
+
 
 ## Requirements
 
-Boost v1.61 or more recent, and a c++11 compiler.
+Boost v1.61 or more recent, and a decent c++11 compiler.
