@@ -25,7 +25,7 @@
 #include <boost/fusion/include/at_c.hpp>
 #include <boost/optional/optional_io.hpp>
 // uncomment to display parsing debugging infos
-#define BOOST_SPIRIT_X3_DEBUG
+//#define BOOST_SPIRIT_X3_DEBUG
 #include <boost/spirit/home/x3.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <exception>
@@ -341,18 +341,16 @@ namespace ttl
 			virtual std::string evaluate(const map &params)
 			{
 				std::string ret;
+				std::string itname = iterator->get<reference>()->identifiers[0];
 				const boost::any & values = collection->get<reference>()->resolve(params);
 				const vector *objects = boost::any_cast<const vector>(&values);
+				vector fallback_vector;
 				if (!objects)
 				{
-					const std::string *str = boost::any_cast<std::string>(&values);
-					if (str) return *str; // a single value
-                    const char * const* chars = boost::any_cast<const char*>(&values);
-                    if (chars) return *chars ? std::string() : std::string(*chars); // idem
-					else return std::string();
+					fallback_vector.push_back(values);
+					objects = &fallback_vector;
 				}
 				map loop_params(params);
-				std::string itname = iterator->get<reference>()->identifiers[0];
 				bool first = true;
 				for (boost::any const &value : *objects)
 				{
@@ -366,7 +364,10 @@ namespace ttl
 
             virtual bool test(const map &) { throw evaluation_error("#join directive cannot be tested"); }
             
-			virtual std::string debug() { return "{#join $" + iterator->get<reference>()->identifiers[0] + " in $" + boost::join(collection->get<reference>()->identifiers, ".") + ( separator ? " with '" + separator->debug() + "'" : std::string() ) + "}" + content->debug() + "{#end}";
+			virtual std::string debug()
+			{
+				return "{#join $" + iterator->get<reference>()->identifiers[0] + " in $" + boost::join(collection->get<reference>()->identifiers, ".") +
+					( separator ? " with '" + separator->debug() + "'" : std::string() ) + "}" + content->debug() + "{#end}";
 			}
 			
 			node_ptr iterator;	
