@@ -10,7 +10,7 @@
 void test1()
 {
     ttl::tiny_template_ptr tmpl = ttl::tiny_template::parse(
-        "hello {#if $name}{$name}{#else}John{#end}, you have the following items: "
+        "hello {#if $name}{$name}{#elseif $surname}{$surname}{#else}John{#end}, you have the following items: "
         "{#join $item in $items with ', '}{$item}{#if $item == 'foo'}!{#end}{#end}");
     ttl::context context;
     context["name"] = "arthur";
@@ -26,6 +26,7 @@ void test1()
     std::cout << result << std::endl;
 }
 
+/* in progress...
 void test2()
 {
     std::ifstream in("test_complex.ttl");
@@ -45,10 +46,11 @@ void test2()
     
     std::cout << result << std::endl;
 }
+*/
 
 int main(int argv, char* argc[])
 {
     test1();
-    test2();
+//    test2();
     return 0;
 }

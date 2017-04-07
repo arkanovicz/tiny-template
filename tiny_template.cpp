@@ -25,7 +25,7 @@
 #include <boost/fusion/include/at_c.hpp>
 #include <boost/optional/optional_io.hpp>
 // uncomment to display parsing debugging infos
-//#define BOOST_SPIRIT_X3_DEBUG
+#define BOOST_SPIRIT_X3_DEBUG
 #include <boost/spirit/home/x3.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <exception>
@@ -296,33 +296,47 @@ namespace ttl
 			template <typename tuple> if_directive(tuple & t)
 			{
 				using boost::fusion::at_c;
-				condition_node = at_c<0>(t);
-				if_true = at_c<1>(t);
-				if (at_c<2>(t))
-					if_false = *at_c<2>(t);
+				condition_nodes.push_back(at_c<0>(t));
+				part_nodes.push_back(at_c<1>(t));
+				bool condition = true;
+				for (auto &elseif : at_c<2>(t))
+				{
+					condition_nodes.push_back(at_c<0>(elseif));
+					part_nodes.push_back(at_c<1>(elseif));
+				}
+				if (at_c<3>(t)) part_nodes.push_back(*at_c<3>(t));
 			}
 			virtual ~if_directive() {}
 			virtual std::string evaluate(const map &params)
 			{
-				std::string ret;
-				if (!condition_node) throw evaluation_error("malformed #if directive");
-				if (condition_node->test(params)) ret = if_true->evaluate(params);
-				else if(if_false) ret = if_false->evaluate(params);
-				else ret = "";
-				return ret;
+				if (!condition_nodes.size() || part_nodes.size() < condition_nodes.size() || part_nodes.size() > condition_nodes.size() + 1) throw evaluation_error("malformed #if directive");
+                int cond = 0;
+                for (; cond < condition_nodes.size(); ++cond)
+                {
+                    if (condition_nodes[cond]->test(params)) return part_nodes[cond]->evaluate(params);
+                }
+                return part_nodes.size() > cond ? part_nodes[cond]->evaluate(params) : std::string();
 			}
 			virtual std::string debug()
 			{
-                std::string cond_string;
-                reference* ref = condition_node->get<reference>();
-                if (ref) cond_string = ref->debug_inner();
-                else cond_string = condition_node->debug();
-				return "{#if " + cond_string + "}" + if_true->debug() + ( if_false ? "{#else}" + if_false->debug() : std::string() ) + "{#end}";
+                std::string dbg;
+                int cond = 0;
+                for (; cond < condition_nodes.size(); ++cond)
+                {
+                    if (cond == 0) dbg = "{#if "; else dbg = "{#elseif ";
+                    reference* ref = condition_nodes[cond]->get<reference>();
+					std::string cond_string;
+                    if (ref) cond_string = ref->debug_inner();
+                    else cond_string = condition_nodes[cond]->debug();
+                    dbg += cond_string + "}" + part_nodes[cond]->debug();
+                }
+                if (part_nodes.size() > cond) dbg + "{#else}" + part_nodes[cond]->debug();
+                dbg += "{#end}";
+                return dbg;
 			}
             virtual bool test(const map &) { throw evaluation_error("#if directive cannot be tested"); }
-			node_ptr condition_node;
-			node_ptr if_true;
-			node_ptr if_false;
+			std::vector<node_ptr> condition_nodes;
+            std::vector<node_ptr> part_nodes;
 		};
 		
 		struct join_directive : node
@@ -428,7 +442,7 @@ namespace ttl
 		DEFINE_RULE( tiny_template, template_part >> eoi )
 		DEFINE_RULE( template_part, ( *( variable | directive | plain_text) ) [ new_parent ] )
 		DEFINE_RULE( directive, if_directive | join_directive )
-		DEFINE_RULE( if_directive, ( "{#if" >> omit[+space] >> condition >> '}' >> template_part >> -( "{#else}" >> template_part ) >> "{#end}" ) [ new_if_directive ] )
+		DEFINE_RULE( if_directive, ( "{#if" >> omit[+space] >> condition >> '}' >> template_part >> *( "{#elseif " >> omit[+space] >> condition >> '}' >> template_part ) >> -( "{#else}" >> template_part ) >> "{#end}" ) [ new_if_directive ] )
 		// CB TODO - the only supported condition, for now, is a boolean check on a reference
 		DEFINE_RULE( condition, ( omit[*space] >> value >> omit[*space] >> -( omit[raw["=="]] >> omit[*space] >> value ) ) [new_condition] )
 //		DEFINE_RULE( condition, ( value >> omit[*space] >> -( binary_operator >> omit[*space] >> value ) ) [new_condition] )
