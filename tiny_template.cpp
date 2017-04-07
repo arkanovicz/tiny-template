@@ -25,7 +25,7 @@
 #include <boost/fusion/include/at_c.hpp>
 #include <boost/optional/optional_io.hpp>
 // uncomment to display parsing debugging infos
-#define BOOST_SPIRIT_X3_DEBUG
+//#define BOOST_SPIRIT_X3_DEBUG
 #include <boost/spirit/home/x3.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <exception>
