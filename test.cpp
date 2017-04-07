@@ -13,7 +13,7 @@ void test1()
         "hello {#if $name}{$name}{#elseif $surname}{$surname}{#else}John{#end}, you have the following items: "
         "{#join $item in $items with ', '}{$item}{#if $item == 'foo'}!{#end}{#end}");
     ttl::context context;
-    context["name"] = "arthur";
+    context["surname"] = "arthur";
     context["items"] = ttl::vector( { "foo", "bar" } );
 
     std::cout << "parsed template:" << std::endl;

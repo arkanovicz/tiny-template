@@ -298,12 +298,12 @@ namespace ttl
 				using boost::fusion::at_c;
 				condition_nodes.push_back(at_c<0>(t));
 				part_nodes.push_back(at_c<1>(t));
-				bool condition = true;
 				for (auto &elseif : at_c<2>(t))
 				{
 					condition_nodes.push_back(at_c<0>(elseif));
 					part_nodes.push_back(at_c<1>(elseif));
 				}
+                
 				if (at_c<3>(t)) part_nodes.push_back(*at_c<3>(t));
 			}
 			virtual ~if_directive() {}
@@ -323,7 +323,7 @@ namespace ttl
                 int cond = 0;
                 for (; cond < condition_nodes.size(); ++cond)
                 {
-                    if (cond == 0) dbg = "{#if "; else dbg = "{#elseif ";
+                    if (cond == 0) dbg = "{#if "; else dbg += "{#elseif ";
                     reference* ref = condition_nodes[cond]->get<reference>();
 					std::string cond_string;
                     if (ref) cond_string = ref->debug_inner();
@@ -442,10 +442,9 @@ namespace ttl
 		DEFINE_RULE( tiny_template, template_part >> eoi )
 		DEFINE_RULE( template_part, ( *( variable | directive | plain_text) ) [ new_parent ] )
 		DEFINE_RULE( directive, if_directive | join_directive )
-		DEFINE_RULE( if_directive, ( "{#if" >> omit[+space] >> condition >> '}' >> template_part >> *( "{#elseif " >> omit[+space] >> condition >> '}' >> template_part ) >> -( "{#else}" >> template_part ) >> "{#end}" ) [ new_if_directive ] )
-		// CB TODO - the only supported condition, for now, is a boolean check on a reference
+		DEFINE_RULE( if_directive, ( "{#if" >> omit[+space] >> condition >> '}' >> template_part >> *( "{#elseif" >> omit[+space] >> condition >> '}' >> template_part ) >> -( "{#else}" >> template_part ) >> "{#end}" ) [ new_if_directive ] )
+		// CB TODO - only supported conditions, for now, are a boolean check on a reference and the equality operator "=="
 		DEFINE_RULE( condition, ( omit[*space] >> value >> omit[*space] >> -( omit[raw["=="]] >> omit[*space] >> value ) ) [new_condition] )
-//		DEFINE_RULE( condition, ( value >> omit[*space] >> -( binary_operator >> omit[*space] >> value ) ) [new_condition] )
 		DEFINE_RULE( join_directive, ( "{#join" >> omit[+space] >> reference >> omit[+space] >> "in" >> omit[+space] >> reference >> -( omit[+space >> "with" >> +space] >> value ) >> '}' >> template_part >> "{#end}" ) [ new_join_directive] )
 		DEFINE_RULE( value, reference | literal_string )
 		DEFINE_RULE( variable, '{' >> reference >> '}' )
